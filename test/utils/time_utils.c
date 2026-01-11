@@ -41,6 +41,12 @@ void time_simulate_ticks(uint32_t ticks) {
     }
 }
 
+// // 更加安全的版本，确保不会少调用 tick
+// uint32_t time_ms_to_ticks(uint32_t ms) {
+//     // 向上取整，避免整数除法丢失剩余毫秒导致少调用一次 tick
+//     return (ms + BITS_BTN_TICKS_INTERVAL - 1) / BITS_BTN_TICKS_INTERVAL;
+// }
+
 uint32_t time_ms_to_ticks(uint32_t ms) {
     return ms / BITS_BTN_TICKS_INTERVAL;
 }

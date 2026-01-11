@@ -70,10 +70,16 @@ target_compile_options(run_tests_new PRIVATE
 )
 
 # 添加测试目标
+include(CTest)
 enable_testing()
 
-# 新架构测试
-add_test(NAME BitsButtonTestsNew COMMAND run_tests_new)
+# 确保测试可执行文件放在可预期的位置（避免 add_test 路径问题）
+set_target_properties(run_tests_new PROPERTIES
+    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/test_bin
+)
+
+# 新架构测试（使用生成器表达式确保使用目标生成的可执行文件绝对路径）
+add_test(NAME BitsButtonTestsNew COMMAND $<TARGET_FILE:run_tests_new>)
 
 # 设置测试属性
 set_tests_properties(BitsButtonTestsNew PROPERTIES

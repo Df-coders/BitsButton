@@ -827,7 +827,7 @@ static void dispatch_unsuppressed_buttons(bits_button_t *button, button_mask_typ
     // ​​Process Unsuppressed Individual Buttons
     for (size_t i = 0; i < button->btns_cnt; i++)
     {
-        button_mask_type_t btn_mask = ((button_mask_type_t)1UL << i);
+        button_mask_type_t btn_mask = ((button_mask_type_t)1U << i);
 
         // Skip individual buttons suppressed by combo buttons
         if (suppression_mask & btn_mask) {
@@ -853,7 +853,7 @@ void bits_button_ticks(void)
 
         if (read_gpio_level == button->btns[i].active_level)
         {
-            new_mask |= ((button_mask_type_t)1UL << i);
+            new_mask |= ((button_mask_type_t)1U << i);
         }
     }
 

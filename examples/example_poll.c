@@ -1,5 +1,32 @@
 // 1. 包含头文件
 #include "bits_button.h"
+#include "time.h"
+#include <stdarg.h>
+#include <string.h>
+// 以下代码是一个demo，展示如何使用轮询方式获取按键结果
+
+// 以下宏定义和函数用于跨平台的线程安全时间格式化
+static void portable_localtime(const time_t *t, struct tm *out_tm)
+{
+#if defined(_MSC_VER)
+    // MSVC
+    localtime_s(out_tm, t);
+#elif defined(__MINGW32__) || defined(__MINGW64__)
+    // MinGW / MinGW-w64: 优先使用 localtime_r（若可用），否则退回到 localtime（非线程安全）
+    #if defined(_POSIX_THREAD_SAFE_FUNCTIONS) || defined(__USE_MINGW_ANSI_STDIO)
+        // localtime_r(t, out_tm);   Mingw 编译器不支持 localtime_r
+        // 使用 localtime_s 作为替代（c11 标准）
+        localtime_s(out_tm, t);
+    #else
+        struct tm *tmp = localtime(t);
+        if (tmp) *out_tm = *tmp;
+        else memset(out_tm, 0, sizeof(*out_tm));
+    #endif
+#else
+    // POSIX 平台
+    localtime_r(t, out_tm);
+#endif
+}
 
 typedef enum
 {
@@ -55,13 +82,10 @@ uint8_t read_key_state(struct button_obj_t *btn)
     {
         case USER_BUTTON_0:
             return get_button1_value(); //Require self implementation
-            break;
         case USER_BUTTON_1:
             return get_button2_value(); //Require self implementation
-            break;
         default:
             return 0;
-            break;
     }
 
     return 0;
@@ -69,13 +93,24 @@ uint8_t read_key_state(struct button_obj_t *btn)
 
 // 4. 日志函数（可选）
 int my_log_printf(const char* format, ...) {
-
+    char body[256];
     va_list args;
     va_start(args, format);
-    int result = vprintf(format, args);
+    vsnprintf(body, sizeof(body), format, args);
     va_end(args);
 
-    return result;
+    char out[320];
+    time_t tt = time(NULL);
+    struct tm tm_buf;
+    portable_localtime(&tt, &tm_buf);
+
+    int len = snprintf(out, sizeof(out), "[%02d:%02d:%02d] [BITS] %s",
+                       tm_buf.tm_hour, tm_buf.tm_min, tm_buf.tm_sec,
+                       body);
+
+    fputs(out, stdout);
+    fflush(stdout);
+    return len;
 }
 
 int main()

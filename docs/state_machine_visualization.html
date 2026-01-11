@@ -1,0 +1,300 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>BitsButton 状态机流程图</title>
+    <script src="https://cdn.jsdelivr.net/npm/mermaid/dist/mermaid.min.js"></script>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; }
+        .diagram { margin: 20px 0; }
+        .description { background: #f5f5f5; padding: 15px; border-radius: 5px; margin: 10px 0; }
+        .code { background: #282c34; color: #abb2bf; padding: 10px; border-radius: 5px; font-family: 'Courier New', monospace; }
+    </style>
+</head>
+<body>
+    <h1>BitsButton 状态机与二进制位序列技术分析</h1>
+    
+    <h2>1. 状态机流程图</h2>
+    <div class="diagram">
+        <div class="mermaid">
+            stateDiagram-v2
+                [*] --> IDLE : 系统初始化
+                
+                IDLE --> PRESSED : 按键按下<br/>append_bit(1)<br/>重置state_entry_time<br/>上报PRESSED事件
+                
+                PRESSED --> LONG_PRESS : 超过长按阈值<br/>(time > long_press_start_time_ms)<br/>append_bit(1)<br/>重置state_entry_time<br/>重置周期计数器<br/>上报LONG_PRESS事件
+                PRESSED --> RELEASE : 按键释放<br/>(btn_pressed = 0)<br/>状态转换（无时间重置）
+                
+                LONG_PRESS --> RELEASE : 按键释放<br/>(btn_pressed = 0)<br/>重置周期计数器<br/>状态转换（无时间重置）
+                LONG_PRESS --> LONG_PRESS : 周期触发<br/>(time > long_press_period_triger_ms)<br/>重置state_entry_time<br/>增加周期计数器<br/>条件性append_bit(1)<br/>仅当匹配0b011模式<br/>上报周期事件
+                
+                RELEASE --> RELEASE_WINDOW : 立即自动转换<br/>append_bit(0)<br/>重置state_entry_time<br/>上报RELEASE事件
+                
+                RELEASE_WINDOW --> IDLE : 窗口内再次按下<br/>(btn_pressed = 1)<br/>重置state_entry_time<br/>继续按键序列检测
+                RELEASE_WINDOW --> FINISH : 窗口超时<br/>(time > time_window_time_ms)<br/>无后续按键操作
+                
+                FINISH --> IDLE : 立即自动转换<br/>上报FINISH事件<br/>输出完整state_bits<br/>清零state_bits<br/>回到初始状态
+        </div>
+    </div>
+
+    <h2>2. 二进制位序列编码机制</h2>
+    
+    <div class="description">
+        <h3>核心思想</h3>
+        <p>BitsButton 使用二进制位序列来编码按键的时序操作，每个位代表一个关键事件：</p>
+        <ul>
+            <li><strong>位 '1'</strong>：按键按下事件 或 长按检测事件</li>
+            <li><strong>位 '0'</strong>：按键释放事件</li>
+        </ul>
+    </div>
+
+    <div class="code">
+// 核心位操作函数
+static void __append_bit(state_bits_type_t* state_bits, uint8_t bit) {
+    *state_bits = (*state_bits << 1) | bit;  // 左移并追加新位
+}
+
+// 模式匹配函数  
+static uint8_t __check_if_the_bits_match(const key_value_type_t *state_bits, 
+                                         key_value_type_t target, 
+                                         uint8_t target_bits_number) {
+    key_value_type_t mask = (1 << target_bits_number) - 1;
+    return (((*state_bits) & mask) == target ? 1 : 0);
+}
+    </div>
+
+    <h2>3. 典型按键模式的位序列编码</h2>
+    
+    <div class="diagram">
+        <div class="mermaid">
+            flowchart TD
+                A[初始状态: 0b0] --> B1[按下: 0b1]
+                A --> C1[按下: 0b1]
+                A --> D1[按下: 0b1]
+                
+                B1 --> B2[释放: 0b10]
+                B2 --> B3[单击完成: 0b10<br/>实际编码]
+                
+                C1 --> C2[释放: 0b10]
+                C2 --> C3[窗口内再按: 0b101]
+                C3 --> C4[再释放: 0b1010]
+                C4 --> C5[双击完成: 0b1010<br/>实际编码]
+                
+                D1 --> D2[长按检测: 0b11]
+                D2 --> D3[释放: 0b110]
+                D3 --> D4[长按完成: 0b110<br/>实际编码]
+                
+                style B3 fill:#e1f5fe
+                style C5 fill:#f3e5f5
+                style D4 fill:#e8f5e8
+        </div>
+    </div>
+    
+    <div class="description">
+        <h3>位序列编码详解</h3>
+        <table style="width:100%; border-collapse: collapse; margin: 10px 0;">
+            <tr style="background: #f0f0f0;">
+                <th style="border: 1px solid #ddd; padding: 8px;">操作类型</th>
+                <th style="border: 1px solid #ddd; padding: 8px;">时序步骤</th>
+                <th style="border: 1px solid #ddd; padding: 8px;">位序列变化</th>
+                <th style="border: 1px solid #ddd; padding: 8px;">最终编码</th>
+            </tr>
+            <tr>
+                <td style="border: 1px solid #ddd; padding: 8px;" rowspan="3"><strong>单击</strong></td>
+                <td style="border: 1px solid #ddd; padding: 8px;">按下</td>
+                <td style="border: 1px solid #ddd; padding: 8px;">0b0 → 0b1</td>
+                <td style="border: 1px solid #ddd; padding: 8px;" rowspan="3">0b10</td>
+            </tr>
+            <tr>
+                <td style="border: 1px solid #ddd; padding: 8px;">释放</td>
+                <td style="border: 1px solid #ddd; padding: 8px;">0b1 → 0b10</td>
+            </tr>
+            <tr>
+                <td style="border: 1px solid #ddd; padding: 8px;">完成</td>
+                <td style="border: 1px solid #ddd; padding: 8px;">窗口超时</td>
+            </tr>
+            <tr>
+                <td style="border: 1px solid #ddd; padding: 8px;" rowspan="5"><strong>双击</strong></td>
+                <td style="border: 1px solid #ddd; padding: 8px;">第一次按下</td>
+                <td style="border: 1px solid #ddd; padding: 8px;">0b0 → 0b1</td>
+                <td style="border: 1px solid #ddd; padding: 8px;" rowspan="5">0b1010</td>
+            </tr>
+            <tr>
+                <td style="border: 1px solid #ddd; padding: 8px;">第一次释放</td>
+                <td style="border: 1px solid #ddd; padding: 8px;">0b1 → 0b10</td>
+            </tr>
+            <tr>
+                <td style="border: 1px solid #ddd; padding: 8px;">第二次按下</td>
+                <td style="border: 1px solid #ddd; padding: 8px;">0b10 → 0b101</td>
+            </tr>
+            <tr>
+                <td style="border: 1px solid #ddd; padding: 8px;">第二次释放</td>
+                <td style="border: 1px solid #ddd; padding: 8px;">0b101 → 0b1010</td>
+            </tr>
+            <tr>
+                <td style="border: 1px solid #ddd; padding: 8px;">完成</td>
+                <td style="border: 1px solid #ddd; padding: 8px;">窗口超时</td>
+            </tr>
+            <tr>
+                <td style="border: 1px solid #ddd; padding: 8px;" rowspan="4"><strong>长按</strong></td>
+                <td style="border: 1px solid #ddd; padding: 8px;">按下</td>
+                <td style="border: 1px solid #ddd; padding: 8px;">0b0 → 0b1</td>
+                <td style="border: 1px solid #ddd; padding: 8px;" rowspan="4">0b110</td>
+            </tr>
+            <tr>
+                <td style="border: 1px solid #ddd; padding: 8px;">长按检测</td>
+                <td style="border: 1px solid #ddd; padding: 8px;">0b1 → 0b11</td>
+            </tr>
+            <tr>
+                <td style="border: 1px solid #ddd; padding: 8px;">释放</td>
+                <td style="border: 1px solid #ddd; padding: 8px;">0b11 → 0b110</td>
+            </tr>
+            <tr>
+                <td style="border: 1px solid #ddd; padding: 8px;">完成</td>
+                <td style="border: 1px solid #ddd; padding: 8px;">窗口超时</td>
+            </tr>
+        </table>
+    </div>
+
+    <h2>4. 预定义的按键模式常量与实际编码对比</h2>
+    
+    <div class="code">
+// 头文件中的预定义常量
+#define BITS_BTN_NONE_PRESS_KV                    0
+#define BITS_BTN_SINGLE_CLICK_KV                  0b010
+#define BITS_BTN_DOUBLE_CLICK_KV                  0b01010  
+#define BITS_BTN_TRIPLE_CLICK_KV                  0b0101010
+
+#define BITS_BTN_LONG_PRESEE_START_KV             0b011
+#define BITS_BTN_LONG_PRESEE_HOLD_KV              0b0111
+#define BITS_BTN_LONG_PRESEE_HOLD_END_KV          0b01110
+
+#define BITS_BTN_SINGLE_CLICK_THEN_LONG_PRESS_KV  0b01011
+#define BITS_BTN_DOUBLE_CLICK_THEN_LONG_PRESS_KV  0b0101011
+    </div>
+    
+    <div class="description">
+        <h3>⚠️ 重要发现：预定义常量与实际编码的差异</h3>
+        <p>通过代码分析发现，实际运行时的编码与头文件中的预定义常量存在差异：</p>
+        <table style="width:100%; border-collapse: collapse; margin: 10px 0;">
+            <tr style="background: #fff3cd;">
+                <th style="border: 1px solid #ddd; padding: 8px;">操作类型</th>
+                <th style="border: 1px solid #ddd; padding: 8px;">预定义常量</th>
+                <th style="border: 1px solid #ddd; padding: 8px;">实际编码</th>
+                <th style="border: 1px solid #ddd; padding: 8px;">差异说明</th>
+            </tr>
+            <tr>
+                <td style="border: 1px solid #ddd; padding: 8px;">单击</td>
+                <td style="border: 1px solid #ddd; padding: 8px;">0b010</td>
+                <td style="border: 1px solid #ddd; padding: 8px;"><strong>0b10</strong></td>
+                <td style="border: 1px solid #ddd; padding: 8px;">缺少前导0位</td>
+            </tr>
+            <tr>
+                <td style="border: 1px solid #ddd; padding: 8px;">双击</td>
+                <td style="border: 1px solid #ddd; padding: 8px;">0b01010</td>
+                <td style="border: 1px solid #ddd; padding: 8px;"><strong>0b1010</strong></td>
+                <td style="border: 1px solid #ddd; padding: 8px;">缺少前导0位</td>
+            </tr>
+            <tr>
+                <td style="border: 1px solid #ddd; padding: 8px;">长按开始</td>
+                <td style="border: 1px solid #ddd; padding: 8px;">0b011</td>
+                <td style="border: 1px solid #ddd; padding: 8px;"><strong>0b110</strong></td>
+                <td style="border: 1px solid #ddd; padding: 8px;">位序列包含释放位</td>
+            </tr>
+        </table>
+        <p><strong>建议</strong>：在使用时应该基于实际编码进行匹配，而不是依赖预定义常量。</p>
+    </div>
+
+    <h2>5. 时序图示例</h2>
+    
+    <div class="diagram">
+        <div class="mermaid">
+            sequenceDiagram
+                participant U as 用户
+                participant B as 按键硬件  
+                participant S as 状态机
+                participant E as 事件系统
+                
+                Note over U,E: 单击操作示例
+                
+                U->>B: 按下按键
+                B->>S: GPIO = HIGH
+                S->>S: IDLE → PRESSED<br/>append_bit(1)
+                S->>E: 上报PRESSED事件
+                
+                U->>B: 释放按键
+                B->>S: GPIO = LOW  
+                S->>S: PRESSED → RELEASE<br/>状态转换（保持时间）
+                S->>S: RELEASE状态内执行<br/>append_bit(0)<br/>上报RELEASE事件
+                S->>S: RELEASE → RELEASE_WINDOW<br/>重置时间
+                
+                Note over S: 等待time_window_time_ms窗口
+                
+                S->>S: 窗口超时<br/>RELEASE_WINDOW → FINISH
+                S->>E: 上报FINISH事件<br/>key_value = 0b10<br/>（实际编码）
+                S->>S: FINISH → IDLE<br/>清零状态位
+        </div>
+    </div>
+
+    <h2>6. 去抖机制流程</h2>
+    
+    <div class="diagram">
+        <div class="mermaid">
+            flowchart TD
+                A[bits_button_ticks 被调用] --> B[读取所有按键GPIO状态]
+                B --> C[构建new_mask位掩码]
+                C --> D{new_mask != last_mask?}
+                
+                D -->|是| E[记录state_entry_time<br/>更新last_mask]
+                D -->|否| F[计算time_diff]
+                
+                E --> F
+                F --> G{time_diff >= 去抖时间?}
+                
+                G -->|否| H[返回，等待下次tick]
+                G -->|是| I[处理组合按键]
+                I --> J[处理单独按键]
+                J --> K[调用状态机更新]
+                
+                H --> A
+                K --> A
+        </div>
+    </div>
+
+    <h2>7. 技术特点总结</h2>
+    
+    <div class="description">
+        <h3>状态机设计优势</h3>
+        <ul>
+            <li><strong>清晰的状态划分</strong>：6个状态覆盖按键的完整生命周期</li>
+            <li><strong>时间驱动</strong>：基于tick的精确时序控制</li>
+            <li><strong>可配置性</strong>：长按时间、去抖时间等参数可调</li>
+            <li><strong>事件驱动</strong>：支持回调和缓冲区两种处理方式</li>
+        </ul>
+        
+        <h3>二进制位序列技术优势</h3>
+        <ul>
+            <li><strong>紧凑编码</strong>：用最少的位表示复杂的按键时序</li>
+            <li><strong>模式识别</strong>：通过位掩码快速匹配按键模式</li>
+            <li><strong>扩展性强</strong>：可轻松定义新的按键组合模式</li>
+            <li><strong>内存高效</strong>：单个32位整数记录完整按键序列</li>
+        </ul>
+        
+        <h3>应用场景</h3>
+        <ul>
+            <li>嵌入式系统的人机交互界面</li>
+            <li>IoT设备的简化操作接口</li>
+            <li>工业控制系统的按键识别</li>
+            <li>消费电子产品的手势识别</li>
+        </ul>
+    </div>
+
+    <script>
+        mermaid.initialize({ 
+            startOnLoad: true,
+            theme: 'default',
+            flowchart: { useMaxWidth: true },
+            sequence: { useMaxWidth: true }
+        });
+    </script>
+</body>
+</html>
